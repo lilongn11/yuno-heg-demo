@@ -17,8 +17,12 @@ const SERVER_PORT = 8080
 
 let CUSTOMER_ID
 
+const sessions = new Map()    // checkout_session token → { id, baseAmount, currency }
+const sessionFees = new Map() // checkout_session token → { surcharge, totalAmount }
+
 const staticDirectory = path.join(__dirname, 'static')
 const checkoutPage = path.join(__dirname, 'pages/checkout.html')
+const checkoutSeamlessPage = path.join(__dirname, 'pages/checkout-seamless.html')
 
 const app = express()
 
@@ -33,6 +37,10 @@ app.get('/checkout', (req, res) => {
   res.sendFile(checkoutPage)
 })
 
+app.get('/checkout-seamless', (req, res) => {
+  res.sendFile(checkoutSeamlessPage)
+})
+
 app.get('/public-api-key', (req, res) => {
   res.json({ publicApiKey: PUBLIC_API_KEY })
 })
@@ -40,6 +48,7 @@ app.get('/public-api-key', (req, res) => {
 app.post('/checkout/sessions', async (req, res) => {
   const country = req.query.country || 'CO'
   const { currency } = getCountryData(country)
+  const baseAmount = 2000
 
   const response = await fetch(
     `${API_URL}/v1/checkout/sessions`,
@@ -58,22 +67,67 @@ app.post('/checkout/sessions', async (req, res) => {
         customer_id: CUSTOMER_ID,
         amount: {
           currency,
-          value: 2000,
+          value: baseAmount,
         },
       }),
     }
   ).then((resp) => resp.json())
 
+  // Store session metadata for later fee calculation
+  if (response.checkout_session) {
+    sessions.set(response.checkout_session, {
+      id: response.id,
+      baseAmount,
+      currency,
+      country,
+    })
+  }
+
   res.send(response)
 })
 
+app.post('/session/update-fee', async (req, res) => {
+  const { checkoutSession, tokenWithInfo } = req.body
+
+  const sessionData = sessions.get(checkoutSession)
+  if (!sessionData) {
+    return res.status(400).json({ error: 'Session not found' })
+  }
+
+  const { id: sessionId, baseAmount, currency } = sessionData
+  const cardCountryCode = tokenWithInfo?.card_data?.country_code ?? null
+  const surchargeRate = cardCountryCode === 'SG' ? 0.01 : 0.02
+  const surcharge = Math.round(baseAmount * surchargeRate)
+  const totalAmount = baseAmount + surcharge
+
+  // Update Yuno session amount to include fee
+  await fetch(`${API_URL}/v1/checkout/sessions/${sessionId}`, {
+    method: 'PATCH',
+    headers: {
+      'public-api-key': PUBLIC_API_KEY,
+      'private-secret-key': PRIVATE_SECRET_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      amount: { currency, value: totalAmount },
+    }),
+  })
+
+  // Store computed fee server-side — POST /payments will read from here
+  sessionFees.set(checkoutSession, { surchargeRate, surcharge, totalAmount })
+
+  res.json({ surchargeRate, surchargeAmount: surcharge, totalAmount, currency })
+})
+
 app.post('/payments', async (req, res) => {
-  const { checkoutSession, oneTimeToken, surchargeRate } = req.body
+  const { checkoutSession, oneTimeToken } = req.body
   const country = req.query.country || 'CO'
   const { currency, documentNumber, documentType, amount } = getCountryData(country)
 
   const baseAmount = amount
-  const surcharge = surchargeRate ? Math.round(baseAmount * surchargeRate) : 0
+  // Read fee from server-side map — never trust client-supplied rate
+  const feeData = sessionFees.get(checkoutSession)
+  const surcharge = feeData ? feeData.surcharge : 0
   const totalAmount = baseAmount + surcharge
 
   const response = await fetch(`${API_URL}/v1/payments`, {

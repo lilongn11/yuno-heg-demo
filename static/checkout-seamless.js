@@ -1,8 +1,9 @@
 import { getCheckoutSession, createPayment, getPublicApiKey, updateSessionFee } from "./api.js"
 
-async function initCheckout() {
-  const sessionData = await getCheckoutSession()
-  const { checkout_session: checkoutSession, country: countryCode } = sessionData
+async function initSeamlessCheckout() {
+  let sessionData = await getCheckoutSession()
+  let checkoutSession = sessionData.checkout_session
+  const countryCode = sessionData.country
   const baseAmount = sessionData.amount?.value ?? 2000
   const currency = sessionData.amount?.currency ?? 'COP'
 
@@ -13,7 +14,6 @@ async function initCheckout() {
   const surchargeNotice = document.getElementById('surcharge-notice')
   const surchargeConfirm = document.getElementById('surcharge-confirm')
   let isPaying = false
-  let selectedPaymentMethod = null
   let pendingCardOpen = false
 
   function formatAmount(amount) {
@@ -69,12 +69,6 @@ async function initCheckout() {
     showLoading: true,
     keepLoader: true,
 
-    onLoading: (args) => {
-      if (!isPaying) {
-        loader.style.display = 'none'
-      }
-    },
-
     renderMode: {
       type: 'modal',
       elementSelector: {
@@ -88,10 +82,13 @@ async function initCheckout() {
       styles: '',
     },
 
-    yunoPaymentMethodSelected(data) {
-      console.log('onPaymentMethodSelected', data)
-      selectedPaymentMethod = data.type
+    onLoading: () => {
+      if (!isPaying) {
+        loader.style.display = 'none'
+      }
+    },
 
+    yunoPaymentMethodSelected(data) {
       if (data.type === 'CARD') {
         surchargeNotice.style.display = 'block'
         if (pendingCardOpen) {
@@ -124,6 +121,7 @@ async function initCheckout() {
         isPaying = false
         pendingCardOpen = true
         const newSessionData = await getCheckoutSession()
+        checkoutSession = newSessionData.checkout_session
         yuno.updateCheckoutSession(newSessionData.checkout_session)
         yuno.mountCheckout({ paymentMethodType: 'CARD' })
         return
@@ -131,11 +129,7 @@ async function initCheckout() {
 
       if (result === 'change-method') {
         isPaying = false
-        selectedPaymentMethod = null
-        surchargeNotice.style.display = 'none'
-        const newSessionData = await getCheckoutSession()
-        yuno.updateCheckoutSession(newSessionData.checkout_session)
-        yuno.mountCheckout()
+        window.location.href = '/checkout'
         return
       }
 
@@ -156,7 +150,7 @@ async function initCheckout() {
     },
   })
 
-  yuno.mountCheckout()
+  yuno.mountCheckout({ paymentMethodType: 'CARD' })
 
   const payButton = document.getElementById('button-pay')
   payButton.addEventListener('click', () => {
@@ -164,4 +158,4 @@ async function initCheckout() {
   })
 }
 
-window.addEventListener('yuno-sdk-ready', initCheckout)
+window.addEventListener('yuno-sdk-ready', initSeamlessCheckout)

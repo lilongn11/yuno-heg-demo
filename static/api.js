@@ -23,3 +23,14 @@ export async function createPayment(data) {
   })
   .then(resp => resp.json())
 }
+
+export async function updateSessionFee({ checkoutSession, tokenWithInfo }) {
+  return fetch('/session/update-fee', {
+    method: 'POST',
+    body: JSON.stringify({ checkoutSession, tokenWithInfo }),
+    headers: {
+      'Content-Type': 'application/json'
+    },
+  })
+  .then(resp => resp.json())
+}
