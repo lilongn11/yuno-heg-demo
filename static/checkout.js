@@ -125,7 +125,9 @@ async function initCheckout() {
 
       if (result === 'different-card') {
         isPaying = false
-        yuno.startPayment()
+        const newSessionData = await getCheckoutSession()
+        yuno.updateCheckoutSession(newSessionData.checkout_session)
+        yuno.mountCheckout({ paymentMethodType: 'CARD' })
         return
       }
 
