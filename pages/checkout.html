@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://assets-global.website-files.com/6277c350218d32e9e5dc0380/627e9998bb4b6124743a90fc_favicon-yuno32x32.png" rel="shortcut icon" type="image/x-icon"/>
+  <link href="https://assets-global.website-files.com/6277c350218d32e9e5dc0380/627e999c388c6cd2a87050e7_favicon-yuno256x256.png" rel="apple-touch-icon"/>
+  <title>Yuno Checkout — HEG Demo</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <!-- SDK mounts here -->
+  <div id="root"></div>
+
+  <!-- APM form containers -->
+  <div id="form-element"></div>
+  <div id="action-form-element"></div>
+
+  <!-- Surcharge notice — hidden until a card payment method is selected -->
+  <div id="surcharge-notice">
+    <span>&#9432;</span>
+    A processing fee applies to card payments: 1% for Singapore-issued cards, 2% for all other cards.
+  </div>
+
+  <!-- Surcharge confirmation modal — shown before payment is submitted -->
+  <div id="surcharge-confirm" style="display:none;">
+    <div id="surcharge-confirm__inner">
+      <h3>Confirm Payment</h3>
+      <div class="sc-row"><span>Card origin</span><span id="sc-country">—</span></div>
+      <div class="sc-row"><span>Surcharge rate</span><span id="sc-rate">—</span></div>
+      <div class="sc-row"><span>Base amount</span><span id="sc-base">—</span></div>
+      <div class="sc-row sc-row--fee"><span>Processing fee</span><span id="sc-fee">—</span></div>
+      <div class="sc-row sc-row--total"><span>Total</span><span id="sc-total">—</span></div>
+      <p id="sc-disclaimer" style="display:none;">
+        &#9888; Card origin could not be determined. Applying standard 2% rate.
+      </p>
+      <div class="sc-actions">
+        <button id="sc-cancel">Cancel</button>
+        <button id="sc-ok">Confirm &amp; Pay</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Merchant pay button -->
+  <button id="button-pay">Pay Now</button>
+
+  <!-- Loader overlay -->
+  <loader-message id="loader" style="display:none;"></loader-message>
+
+  <script src="/static/loader.js" type="module"></script>
+  <script type="module" src="/static/checkout.js"></script>
+
+  <!-- Yuno SDK -->
+  <script src="https://sdk-web.y.uno/v1.5/main.js" defer></script>
+</body>
+</html>
