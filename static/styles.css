@@ -139,7 +139,13 @@ body {
   justify-content: flex-end;
 }
 
-#sc-cancel {
+.sc-actions-secondary {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+#sc-back-card {
   padding: 10px 20px;
   border: 1px solid #632DBB;
   border-radius: 4px;
@@ -150,7 +156,7 @@ body {
   cursor: pointer;
 }
 
-#sc-cancel:hover {
+#sc-back-card:hover {
   background: #f5f0ff;
 }
 
@@ -167,4 +173,19 @@ body {
 
 #sc-ok:hover {
   background: #7c3fd4;
+}
+
+#sc-change-method {
+  background: none;
+  border: none;
+  color: #888;
+  font-family: 'Inter', 'Arial', sans-serif;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
+#sc-change-method:hover {
+  color: #444;
 }

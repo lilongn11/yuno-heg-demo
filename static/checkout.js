@@ -39,27 +39,24 @@ async function initCheckout() {
     surchargeConfirm.style.display = 'flex'
 
     return new Promise((resolve) => {
-      const cancelBtn = document.getElementById('sc-cancel')
+      const backCardBtn = document.getElementById('sc-back-card')
       const okBtn = document.getElementById('sc-ok')
+      const changeMethodBtn = document.getElementById('sc-change-method')
 
-      function onCancel() {
-        cleanup()
-        resolve(false)
-      }
-
-      function onConfirm() {
-        cleanup()
-        resolve(true)
-      }
+      function onBackCard() { cleanup(); resolve('different-card') }
+      function onConfirm() { cleanup(); resolve('confirm') }
+      function onChangeMethod() { cleanup(); resolve('change-method') }
 
       function cleanup() {
         surchargeConfirm.style.display = 'none'
-        cancelBtn.removeEventListener('click', onCancel)
+        backCardBtn.removeEventListener('click', onBackCard)
         okBtn.removeEventListener('click', onConfirm)
+        changeMethodBtn.removeEventListener('click', onChangeMethod)
       }
 
-      cancelBtn.addEventListener('click', onCancel)
+      backCardBtn.addEventListener('click', onBackCard)
       okBtn.addEventListener('click', onConfirm)
+      changeMethodBtn.addEventListener('click', onChangeMethod)
     })
   }
 
@@ -117,7 +114,7 @@ async function initCheckout() {
       const surchargeAmount = Math.round(baseAmount * surchargeRate)
       const totalAmount = baseAmount + surchargeAmount
 
-      const confirmed = await showSurchargeConfirm({
+      const result = await showSurchargeConfirm({
         cardCountryCode,
         cardCountryName,
         surchargeRate,
@@ -126,12 +123,23 @@ async function initCheckout() {
         rateMayVary,
       })
 
-      if (!confirmed) {
+      if (result === 'different-card') {
         isPaying = false
         yuno.startPayment()
         return
       }
 
+      if (result === 'change-method') {
+        isPaying = false
+        selectedPaymentMethod = null
+        surchargeNotice.style.display = 'none'
+        const newSessionData = await getCheckoutSession()
+        yuno.updateCheckoutSession(newSessionData.checkout_session)
+        yuno.mountCheckout()
+        return
+      }
+
+      // result === 'confirm'
       loader.style.display = 'block'
       await createPayment({ oneTimeToken, checkoutSession, surchargeRate })
       yuno.continuePayment()
