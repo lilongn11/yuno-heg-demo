@@ -206,6 +206,56 @@ body {
   flex-direction: column;
 }
 
+/* ── Folder (collapsible sections on index page) ── */
+.folder {
+  margin-bottom: 10px;
+  border: 1px solid #DDE1E8;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.folder-summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: #EEE8F8;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  color: #3d1a7a;
+  letter-spacing: 0.01em;
+  user-select: none;
+}
+
+.folder-summary::-webkit-details-marker { display: none; }
+
+.folder-summary::before {
+  content: '▶';
+  font-size: 9px;
+  color: #9b72d4;
+  transition: transform 0.15s;
+  display: inline-block;
+}
+
+details[open] > .folder-summary::before {
+  transform: rotate(90deg);
+}
+
+.folder-summary:hover {
+  background: #e0d4f5;
+  color: #3d1a7a;
+}
+
+.folder-summary:hover::before { color: #632DBB; }
+
+.folder-content {
+  padding: 12px;
+  background: white;
+  border-top: 1px solid #DDE1E8;
+}
+
 /* ── Index page ── */
 .index-container {
   min-height: 100vh;

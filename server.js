@@ -302,6 +302,45 @@ app.get('/enrollment/payment-methods', async (req, res) => {
   res.json(methodsRes.payment_methods ?? [])
 })
 
+app.get('/checkout/payment-methods', async (req, res) => {
+  const { country, amount: baseAmount, currency } = settings
+
+  // Create a checkout session to query available payment methods
+  const sessionRes = await fetch(`${API_URL}/v1/checkout/sessions`, {
+    method: 'POST',
+    headers: {
+      'public-api-key': PUBLIC_API_KEY,
+      'private-secret-key': PRIVATE_SECRET_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      account_id: ACCOUNT_CODE,
+      merchant_order_id: v4(),
+      payment_description: 'HEG Demo Payment',
+      country,
+      customer_id: CUSTOMER_ID,
+      amount: { currency, value: baseAmount },
+    }),
+  }).then(r => r.json())
+
+  if (!sessionRes.checkout_session) {
+    return res.status(500).json({ error: 'Failed to create checkout session', detail: sessionRes })
+  }
+
+  const methodsRes = await fetch(
+    `${API_URL}/v1/checkout/sessions/${sessionRes.checkout_session}/payment-methods`,
+    {
+      method: 'GET',
+      headers: {
+        'public-api-key': PUBLIC_API_KEY,
+        'private-secret-key': PRIVATE_SECRET_KEY,
+      },
+    }
+  ).then(r => r.json())
+
+  res.json(Array.isArray(methodsRes) ? methodsRes : (methodsRes.payment_methods ?? []))
+})
+
 app.post('/enrollment/method', (req, res) => {
   const { method } = req.body
   if (!method) return res.status(400).json({ error: 'method is required' })

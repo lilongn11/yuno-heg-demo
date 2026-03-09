@@ -1,6 +1,6 @@
 # Yuno Demo
 
-A demo of three Yuno SDK integration patterns: two checkout flows with a card-country surcharge confirmation modal, and an enrollment lite flow. All pages support configurable country, amount, and currency via the index page.
+A demo of four Yuno SDK integration patterns: two checkout flows, a checkout lite flow, and an enrollment lite flow — all with a card-country surcharge confirmation modal where applicable. All integrations are configurable via the index page.
 
 ## Index Page — `/`
 
@@ -12,7 +12,13 @@ Configure demo settings before navigating to any integration:
 
 Settings are stored server-side (`POST /settings`) and applied to all subsequent session creation calls. No query parameters are used.
 
-The enrollment section additionally shows available payment methods fetched from Yuno's customer session API. A method must be selected before the Enrollment Lite link becomes active. Clicking the link triggers the enrollment modal directly on the index page — no navigation required.
+The index page has three collapsible folders — only one can be open at a time:
+
+- **Checkout Full** — links to the full checkout and seamless checkout pages
+- **Checkout Lite** — shows available payment methods when unfolded; select a method then click **Continue With Selected** to open the checkout lite modal directly on the index page
+- **Enrollment** — shows enrollable payment methods when unfolded; select a method then click **Enrollment Lite** to open the enrollment modal directly on the index page
+
+Payment methods are only fetched when a folder is opened or when **Apply Settings** is clicked (while the folder is open). Methods reset when settings change.
 
 ---
 
@@ -72,7 +78,26 @@ Both checkout pages support an `?external=true` URL parameter that switches to e
 
 ---
 
-### 3. Enrollment Lite
+### 3. Checkout Lite — index page (inline modal)
+
+Uses the Yuno **Checkout Lite SDK** (`startCheckout` + `mountCheckoutLite`) to complete a payment for a specific payment method without the full method selector UI. Triggered directly from the index page — no navigation required.
+
+**Flow:**
+1. Open the **Checkout Lite** folder on the index page → available payment methods load automatically
+2. Select a payment method → **Continue With Selected** button activates
+3. Click **Continue With Selected** → `startCheckout` initialises the SDK; `mountCheckoutLite` opens the form as a modal
+4. For **CARD**: user fills card details → `yunoCreatePayment` fires
+5. Server calculates surcharge rate → confirmation modal shows: card origin, rate, base amount, fee, total
+6. **Confirm & Pay** → payment created → `continuePayment()`
+7. **Use different card** → new session, card form reopens
+8. **Change payment method** → modal dismissed; user can select another method on the index page
+9. For non-card methods: payment goes straight through without surcharge modal
+
+**Key files:** `pages/index.html` (inline script)
+
+---
+
+### 4. Enrollment Lite
 
 Uses the Yuno **Enrollment Lite SDK** (`mountEnrollmentLite`) to enroll a payment method into the customer vault without making a payment.
 
@@ -93,7 +118,7 @@ Uses the Yuno **Enrollment Lite SDK** (`mountEnrollmentLite`) to enroll a paymen
    - **PAYPAL_ENROLLMENT** → `mountEnrollmentLite` renders the PayPal button inline (`renderMode: { type: 'element' }`)
 4. `yunoEnrollmentStatus` callback fires with `status` and `vaultedToken` on completion
 
-**Key files:** `pages/index.html`, `pages/enrollment-lite.html`, `static/enrollment-lite.js`
+**Key files:** `pages/index.html` (inline script), `pages/enrollment-lite.html`, `static/enrollment-lite.js`
 
 ---
 
@@ -156,6 +181,7 @@ Vanilla JS + Node.js / Express
 | `POST /checkout/seamless/sessions` | Creates a Yuno checkout session (used by external buttons mode) |
 | `POST /session/update-fee` | Calculates surcharge from `tokenWithInfo`, updates Yuno session, stores fee |
 | `POST /payments` | Creates the payment using server-stored fee |
+| `GET /checkout/payment-methods` | Returns available checkout payment methods via checkout session API |
 | `GET /enrollment/payment-methods` | Returns enrollable payment methods via customer session API |
 | `POST /enrollment/method` | Stores the selected enrollment method |
 | `POST /customers/sessions` | Creates a Yuno customer session |

@@ -12,8 +12,31 @@
 </head>
 <body>
   <!-- Hidden SDK containers — no layout impact -->
+  <div id="root" style="position:fixed;top:-1px;left:-1px;width:1px;height:1px;overflow:hidden;"></div>
   <div id="form-element" style="display:none;"></div>
   <div id="action-form-element" style="display:none;"></div>
+
+  <!-- Surcharge confirmation modal (used by Checkout Lite) -->
+  <div id="surcharge-confirm" style="display:none;">
+    <div id="surcharge-confirm__inner">
+      <h3>Confirm Payment</h3>
+      <div class="sc-row"><span>Card origin</span><span id="sc-country">—</span></div>
+      <div class="sc-row"><span>Surcharge rate</span><span id="sc-rate">—</span></div>
+      <div class="sc-row"><span>Base amount</span><span id="sc-base">—</span></div>
+      <div class="sc-row sc-row--fee"><span>Processing fee</span><span id="sc-fee">—</span></div>
+      <div class="sc-row sc-row--total"><span>Total</span><span id="sc-total">—</span></div>
+      <p id="sc-disclaimer" style="display:none;">
+        &#9888; Card origin could not be determined. Applying standard 2% rate.
+      </p>
+      <div class="sc-actions">
+        <button id="sc-back-card">Use different card</button>
+        <button id="sc-ok">Confirm &amp; Pay</button>
+      </div>
+      <div class="sc-actions-secondary">
+        <button id="sc-change-method">&#8592; Change payment method</button>
+      </div>
+    </div>
+  </div>
 
   <div class="index-container">
     <div class="index-card">
@@ -40,33 +63,64 @@
         <p id="settings-status" class="settings-status"></p>
       </section>
 
-      <!-- Checkout links -->
-      <section class="index-section">
-        <h2 class="index-section-label">Checkout</h2>
-        <div class="page-links">
-          <a href="/checkout" class="page-link">Full Checkout</a>
-          <a href="/checkout?external=true" class="page-link">Full Checkout + External Buttons</a>
-          <a href="/checkout-seamless" class="page-link">Seamless Checkout</a>
-          <a href="/checkout-seamless?external=true" class="page-link">Seamless + External Buttons</a>
+      <!-- Checkout Full -->
+      <details class="folder" open>
+        <summary class="folder-summary">Checkout Full</summary>
+        <div class="folder-content">
+          <div class="page-links">
+            <a href="/checkout" class="page-link">Checkout Full</a>
+            <a href="/checkout?external=true" class="page-link">Checkout Full + External Buttons</a>
+            <a href="/checkout-seamless" class="page-link">Seamless Checkout</a>
+            <a href="/checkout-seamless?external=true" class="page-link">Seamless + External Buttons</a>
+          </div>
         </div>
-      </section>
+      </details>
+
+      <!-- Checkout Lite -->
+      <details class="folder" id="checkout-lite-folder">
+        <summary class="folder-summary">Checkout Lite</summary>
+        <div class="folder-content">
+          <p class="methods-hint">Select a payment method:</p>
+          <div id="checkout-lite-methods" class="method-grid">
+            <span class="methods-loading">Loading available methods…</span>
+          </div>
+          <div class="page-links" style="margin-top:12px;">
+            <a href="#" id="checkout-lite-link" class="page-link page-link--disabled">Continue With Selected</a>
+          </div>
+        </div>
+      </details>
 
       <!-- Enrollment -->
-      <section class="index-section">
-        <h2 class="index-section-label">Enrollment</h2>
-        <p class="methods-hint">Select a payment method to enroll:</p>
-        <div id="enrollment-methods" class="method-grid">
-          <span class="methods-loading">Loading available methods…</span>
+      <details class="folder" id="enrollment-folder">
+        <summary class="folder-summary">Enrollment</summary>
+        <div class="folder-content">
+          <p class="methods-hint">Select a payment method to enroll:</p>
+          <div id="enrollment-methods" class="method-grid">
+            <span class="methods-loading">Loading available methods…</span>
+          </div>
+          <div class="page-links" style="margin-top:12px;">
+            <a href="#" id="enrollment-link" class="page-link page-link--disabled">Enrollment Lite</a>
+          </div>
         </div>
-        <div class="page-links" style="margin-top:12px;">
-          <a href="#" id="enrollment-link" class="page-link page-link--disabled">Enrollment Lite</a>
-        </div>
-      </section>
+      </details>
     </div>
   </div>
 
+  <script>
+    // Accordion: only one folder open at a time
+    document.querySelectorAll('.folder').forEach(detail => {
+      detail.addEventListener('toggle', () => {
+        if (detail.open) {
+          document.querySelectorAll('.folder').forEach(other => {
+            if (other !== detail) other.removeAttribute('open')
+          })
+        }
+      })
+    })
+  </script>
+
   <script type="module">
-    import { getPublicApiKey, getCustomerSession, createEnrollment } from '/static/api.js'
+    import { getPublicApiKey, getCustomerSession, createEnrollment, getCheckoutSession, updateSessionFee, createPayment } from '/static/api.js'
 
     const FALLBACK_COUNTRIES = [
       { code: 'CO', name: 'Colombia', currency: 'COP' },
@@ -78,6 +132,7 @@
     ]
     const CACHE_KEY = 'yuno_countries_v1'
     let countryMap = {}
+    let checkoutLiteMethod = null
 
     async function loadCountries() {
       const cached = localStorage.getItem(CACHE_KEY)
@@ -121,6 +176,166 @@
     function updateCurrency() {
       const code = document.getElementById('country').value
       document.getElementById('currency').textContent = countryMap[code] ?? '—'
+    }
+
+    async function loadCheckoutLiteMethods() {
+      const container = document.getElementById('checkout-lite-methods')
+      container.innerHTML = '<span class="methods-loading">Loading available methods…</span>'
+
+      try {
+        const methods = await fetch('/checkout/payment-methods').then(r => r.json())
+
+        if (!Array.isArray(methods) || methods.length === 0) {
+          container.innerHTML = '<span class="methods-empty">No methods available for current settings.</span>'
+          return
+        }
+
+        container.innerHTML = ''
+        methods.forEach(m => {
+          const btn = document.createElement('button')
+          btn.className = 'method-card'
+          btn.dataset.type = m.type
+          btn.innerHTML = `
+            <div class="method-icon-wrap">
+              ${m.icon ? `<img src="${m.icon}" alt="" class="method-icon">` : ''}
+            </div>
+            <span class="method-name">${m.name || m.type}</span>`
+
+          btn.addEventListener('click', () => {
+            container.querySelectorAll('.method-card').forEach(c => c.classList.remove('selected'))
+            btn.classList.add('selected')
+            checkoutLiteMethod = m.type
+            document.getElementById('checkout-lite-link').classList.remove('page-link--disabled')
+          })
+          container.appendChild(btn)
+        })
+      } catch {
+        container.innerHTML = '<span class="methods-empty">Could not load methods.</span>'
+      }
+    }
+
+    async function startCheckoutLite(e) {
+      e.preventDefault()
+      if (!checkoutLiteMethod) return
+
+      const sessionData = await getCheckoutSession()
+      const { checkout_session: checkoutSession, country: countryCode } = sessionData
+      const baseAmount = sessionData.amount?.value ?? 10
+      const currency = sessionData.amount?.currency ?? 'USD'
+
+      const publicApiKey = await getPublicApiKey()
+      const yuno = await Yuno.initialize(publicApiKey)
+
+      const surchargeConfirm = document.getElementById('surcharge-confirm')
+      let currentCheckoutSession = checkoutSession
+
+      function formatAmount(amt) {
+        return new Intl.NumberFormat('en', {
+          style: 'currency', currency,
+          minimumFractionDigits: 0, maximumFractionDigits: 0,
+        }).format(amt)
+      }
+
+      function showSurchargeConfirm(data) {
+        const { cardCountryCode, cardCountryName, surchargeRate, surchargeAmount, totalAmount, rateMayVary } = data
+
+        document.getElementById('sc-country').textContent = cardCountryName || cardCountryCode || 'Unknown'
+        document.getElementById('sc-rate').textContent = `${(surchargeRate * 100).toFixed(0)}%`
+        document.getElementById('sc-base').textContent = formatAmount(baseAmount)
+        document.getElementById('sc-fee').textContent = formatAmount(surchargeAmount)
+        document.getElementById('sc-total').textContent = formatAmount(totalAmount)
+
+        const disclaimer = document.getElementById('sc-disclaimer')
+        disclaimer.style.display = rateMayVary ? 'block' : 'none'
+
+        surchargeConfirm.style.display = 'flex'
+
+        return new Promise((resolve) => {
+          const backCardBtn = document.getElementById('sc-back-card')
+          const okBtn = document.getElementById('sc-ok')
+          const changeMethodBtn = document.getElementById('sc-change-method')
+
+          function onBackCard() { cleanup(); resolve('different-card') }
+          function onConfirm() { cleanup(); resolve('confirm') }
+          function onChangeMethod() { cleanup(); resolve('change-method') }
+
+          function cleanup() {
+            surchargeConfirm.style.display = 'none'
+            backCardBtn.removeEventListener('click', onBackCard)
+            okBtn.removeEventListener('click', onConfirm)
+            changeMethodBtn.removeEventListener('click', onChangeMethod)
+          }
+
+          backCardBtn.addEventListener('click', onBackCard)
+          okBtn.addEventListener('click', onConfirm)
+          changeMethodBtn.addEventListener('click', onChangeMethod)
+        })
+      }
+
+      await yuno.startCheckout({
+        checkoutSession,
+        elementSelector: '#root',
+        countryCode,
+        language: 'en',
+        showLoading: true,
+        renderMode: {
+          type: 'modal',
+          elementSelector: {
+            apmForm: '#form-element',
+            actionForm: '#action-form-element',
+          },
+        },
+
+        async yunoCreatePayment(oneTimeToken, tokenWithInfo) {
+          console.log('tokenWithInformation', tokenWithInfo)
+
+          if (checkoutLiteMethod !== 'CARD') {
+            await createPayment({ oneTimeToken, checkoutSession: currentCheckoutSession })
+            yuno.continuePayment()
+            return
+          }
+
+          yuno.hideLoader()
+
+          const feeData = await updateSessionFee({ checkoutSession: currentCheckoutSession, tokenWithInfo })
+
+          const result = await showSurchargeConfirm({
+            cardCountryCode: tokenWithInfo?.card_data?.country_code ?? null,
+            cardCountryName: tokenWithInfo?.card_data?.country_name ?? null,
+            surchargeRate: feeData.surchargeRate,
+            surchargeAmount: feeData.surchargeAmount,
+            totalAmount: feeData.totalAmount,
+            rateMayVary: !tokenWithInfo?.card_data?.country_code,
+          })
+
+          if (result === 'different-card') {
+            const newSessionData = await getCheckoutSession()
+            currentCheckoutSession = newSessionData.checkout_session
+            yuno.updateCheckoutSession(newSessionData.checkout_session)
+            yuno.mountCheckoutLite({ paymentMethodType: 'CARD' })
+            return
+          }
+
+          if (result === 'change-method') {
+            return
+          }
+
+          await createPayment({ oneTimeToken, checkoutSession: currentCheckoutSession })
+          yuno.continuePayment()
+        },
+
+        yunoPaymentResult(data) {
+          console.log('yunoPaymentResult', data)
+          yuno.hideLoader()
+        },
+
+        yunoError: (error) => {
+          console.log('There was an error', error)
+          yuno.hideLoader()
+        },
+      })
+
+      yuno.mountCheckoutLite({ paymentMethodType: checkoutLiteMethod })
     }
 
     async function loadEnrollmentMethods() {
@@ -220,13 +435,23 @@
         status.textContent = `✓ Saved: ${result.country} · ${result.currency} ${result.amount}`
         setTimeout(() => { status.textContent = '' }, 3000)
 
+        checkoutLiteMethod = null
+        document.getElementById('checkout-lite-link').classList.add('page-link--disabled')
         document.getElementById('enrollment-link').classList.add('page-link--disabled')
-        loadEnrollmentMethods()
+        if (document.getElementById('checkout-lite-folder').open) loadCheckoutLiteMethods()
+        if (document.getElementById('enrollment-folder').open) loadEnrollmentMethods()
       })
 
-      document.getElementById('enrollment-link').addEventListener('click', startEnrollment)
+      document.getElementById('checkout-lite-folder').addEventListener('toggle', (e) => {
+        if (e.target.open) loadCheckoutLiteMethods()
+      })
 
-      loadEnrollmentMethods()
+      document.getElementById('enrollment-folder').addEventListener('toggle', (e) => {
+        if (e.target.open) loadEnrollmentMethods()
+      })
+
+      document.getElementById('checkout-lite-link').addEventListener('click', startCheckoutLite)
+      document.getElementById('enrollment-link').addEventListener('click', startEnrollment)
     }
 
     window.addEventListener('yuno-sdk-ready', () => init())
