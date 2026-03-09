@@ -12,7 +12,7 @@ Configure demo settings before navigating to any integration:
 
 Settings are stored server-side (`POST /settings`) and applied to all subsequent session creation calls. No query parameters are used.
 
-The enrollment section additionally shows available payment methods fetched from Yuno's customer session API. A method must be selected before the Enrollment Lite link becomes active.
+The enrollment section additionally shows available payment methods fetched from Yuno's customer session API. A method must be selected before the Enrollment Lite link becomes active. Clicking the link triggers the enrollment modal directly on the index page — no navigation required.
 
 ---
 
@@ -58,7 +58,7 @@ Uses the Yuno **Full Checkout SDK** with `mountCheckout({ paymentMethodType: 'CA
 
 ### External Payment Buttons Mode — `?external=true`
 
-Both checkout pages support an `?external=true` URL parameter that switches to external payment buttons (PayPal Enrollment, Google Pay, Apple Pay) rendered as standalone SDK buttons via `mountSeamlessExternalButtons`.
+Both checkout pages support an `?external=true` URL parameter that switches to external payment buttons (PayPal, Google Pay, Apple Pay) rendered as standalone SDK buttons via `mountSeamlessExternalButtons`.
 
 **URLs:**
 - `/checkout?external=true`
@@ -66,26 +66,34 @@ Both checkout pages support an `?external=true` URL parameter that switches to e
 
 **Behaviour:**
 - Each button is only shown if the payment method is available in the account (detected via `MutationObserver`)
-- If no external methods are available, the page automatically falls back to the regular card checkout
-- The Pay Now button is hidden in external mode — each button handles its own payment flow
+- If no external buttons render within 8 seconds, the page automatically falls back to the regular card checkout
+- The Pay Now button and SDK root card are hidden in external mode — each button handles its own payment flow
+- **Apple Pay** requires HTTPS and is automatically skipped on `http://` (e.g. localhost) to avoid browser security errors that would prevent PayPal and Google Pay from loading
 
 ---
 
-### 3. Enrollment Lite — `/enrollment-lite`
+### 3. Enrollment Lite
 
-Uses the Yuno **Enrollment Lite SDK** (`mountEnrollmentLite`) to enroll a payment method into the customer vault without making a payment. The payment method to enroll is selected on the index page before navigating here.
+Uses the Yuno **Enrollment Lite SDK** (`mountEnrollmentLite`) to enroll a payment method into the customer vault without making a payment.
 
-**Flow:**
+**Two entry points:**
+
+**From the index page (modal, no navigation):**
 1. User selects an enrollable payment method on the index page → stored server-side
-2. User navigates to `/enrollment-lite`
-3. Server creates a customer session (`POST /v1/customers/sessions`)
-4. Server registers the enrollment (`POST /v1/customers/sessions/{id}/payment-methods`)
-5. SDK mounts the enrollment form for the selected method:
+2. User clicks **Enrollment Lite** link → enrollment modal opens directly on the index page
+3. Server creates a customer session and registers the enrollment
+4. `mountEnrollmentLite` opens a modal for the selected method
+5. `yunoEnrollmentStatus` callback fires with `status` and `vaultedToken` on completion
+
+**From `/enrollment-lite` (dedicated page):**
+1. User selects a payment method on the index page and navigates to `/enrollment-lite`
+2. Server creates a customer session and registers the enrollment
+3. SDK mounts the enrollment form for the selected method:
    - **CARD** → `mountEnrollmentLite` opens modal immediately on page load
    - **PAYPAL_ENROLLMENT** → `mountEnrollmentLite` renders the PayPal button inline (`renderMode: { type: 'element' }`)
-6. `yunoEnrollmentStatus` callback fires with `status` and `vaultedToken` on completion
+4. `yunoEnrollmentStatus` callback fires with `status` and `vaultedToken` on completion
 
-**Key files:** `pages/enrollment-lite.html`, `static/enrollment-lite.js`
+**Key files:** `pages/index.html`, `pages/enrollment-lite.html`, `static/enrollment-lite.js`
 
 ---
 
