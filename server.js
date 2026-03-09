@@ -86,6 +86,46 @@ app.post('/checkout/sessions', async (req, res) => {
   res.send(response)
 })
 
+app.post('/checkout/seamless/sessions', async (req, res) => {
+  const country = req.query.country || 'CO'
+  const { currency } = getCountryData(country)
+  const baseAmount = 2000
+
+  const response = await fetch(
+    `${API_URL}/v1/checkout/sessions`,
+    {
+      method: 'POST',
+      headers: {
+        'public-api-key': PUBLIC_API_KEY,
+        'private-secret-key': PRIVATE_SECRET_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        account_id: ACCOUNT_CODE,
+        merchant_order_id: v4(),
+        payment_description: 'HEG Demo Payment',
+        country,
+        customer_id: CUSTOMER_ID,
+        amount: {
+          currency,
+          value: baseAmount,
+        },
+      }),
+    }
+  ).then((resp) => resp.json())
+
+  if (response.checkout_session) {
+    sessions.set(response.checkout_session, {
+      id: response.id,
+      baseAmount,
+      currency,
+      country,
+    })
+  }
+
+  res.send(response)
+})
+
 app.post('/session/update-fee', async (req, res) => {
   const { checkoutSession, tokenWithInfo } = req.body
 

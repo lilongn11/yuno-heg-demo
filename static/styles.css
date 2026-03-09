@@ -189,3 +189,19 @@ body {
 #sc-change-method:hover {
   color: #444;
 }
+
+/* ── External payment buttons ── */
+#external-buttons {
+  max-width: 450px;
+  margin: 0 auto;
+  padding: 0 30px 30px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.external-btn-row {
+  display: flex;
+  flex-direction: column;
+}

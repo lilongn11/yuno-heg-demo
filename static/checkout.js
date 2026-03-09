@@ -1,6 +1,52 @@
-import { getCheckoutSession, createPayment, getPublicApiKey, updateSessionFee } from "./api.js"
+import { getCheckoutSession, createPayment, getPublicApiKey, updateSessionFee, getSeamlessCheckoutSession } from "./api.js"
 
-async function initCheckout() {
+async function initExternalCheckout(onFallback) {
+  const { checkout_session: checkoutSession, country: countryCode } = await getSeamlessCheckoutSession()
+  const publicApiKey = await getPublicApiKey()
+  const yuno = await Yuno.initialize(publicApiKey)
+
+  await yuno.startSeamlessCheckout({
+    checkoutSession,
+    elementSelector: '#root',
+    countryCode,
+    language: 'en',
+    renderMode: {
+      type: 'element',
+      elementSelector: '#form-element',
+    },
+    yunoPaymentResult(data) { console.log('yunoPaymentResult', data) },
+    yunoError: (error) => {
+      console.log('No external payment methods available, continuing with regular checkout', error)
+      document.getElementById('external-buttons').style.display = 'none'
+      onFallback()
+    },
+  })
+
+  // External buttons only — no card form in this mode
+  document.getElementById('button-pay').style.display = 'none'
+  document.getElementById('external-buttons').style.display = 'block'
+  document.querySelectorAll('.external-btn-row').forEach(row => row.style.display = 'none')
+  ;['paypal-btn', 'google-pay-btn', 'apple-pay-btn'].forEach(id => {
+    const container = document.getElementById(id)
+    const observer = new MutationObserver(() => {
+      if (container.children.length > 0) {
+        container.closest('.external-btn-row').style.display = 'flex'
+        observer.disconnect()
+      }
+    })
+    observer.observe(container, { childList: true, subtree: true })
+  })
+  yuno.mountSeamlessExternalButtons([
+    { paymentMethodType: 'PAYPAL_ENROLLMENT', elementSelector: '#paypal-btn' },
+    { paymentMethodType: 'GOOGLE_PAY', elementSelector: '#google-pay-btn' },
+    { paymentMethodType: 'APPLE_PAY',  elementSelector: '#apple-pay-btn' },
+  ])
+}
+
+async function initCheckout(forceRegular = false) {
+  const isExternal = !forceRegular && new URLSearchParams(window.location.search).get('external') === 'true'
+  console.log('[checkout] isExternal:', isExternal, '| URL:', window.location.search)
+  if (isExternal) return initExternalCheckout(() => initCheckout(true))
   const sessionData = await getCheckoutSession()
   const { checkout_session: checkoutSession, country: countryCode } = sessionData
   const baseAmount = sessionData.amount?.value ?? 2000
@@ -164,4 +210,4 @@ async function initCheckout() {
   })
 }
 
-window.addEventListener('yuno-sdk-ready', initCheckout)
+window.addEventListener('yuno-sdk-ready', () => initCheckout())

@@ -49,6 +49,13 @@
   <!-- Merchant pay button -->
   <button id="button-pay">Pay Now</button>
 
+  <!-- External payment buttons — shown below card when ?external=true -->
+  <div id="external-buttons" style="display:none;">
+    <div class="external-btn-row"><div id="paypal-btn"></div></div>
+    <div class="external-btn-row"><div id="google-pay-btn"></div></div>
+    <div class="external-btn-row"><div id="apple-pay-btn"></div></div>
+  </div>
+
   <!-- Loader overlay -->
   <loader-message id="loader" style="display:none;"></loader-message>
 

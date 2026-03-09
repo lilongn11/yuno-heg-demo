@@ -24,6 +24,13 @@ export async function createPayment(data) {
   .then(resp => resp.json())
 }
 
+export async function getSeamlessCheckoutSession() {
+  return fetch(`/checkout/seamless/sessions${window.location.search}`, {
+    method: 'POST'
+  })
+  .then(resp => resp.json())
+}
+
 export async function updateSessionFee({ checkoutSession, tokenWithInfo }) {
   return fetch('/session/update-fee', {
     method: 'POST',
