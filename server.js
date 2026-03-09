@@ -17,12 +17,15 @@ const SERVER_PORT = 8080
 
 let CUSTOMER_ID
 
-const sessions = new Map()    // checkout_session token → { id, baseAmount, currency }
-const sessionFees = new Map() // checkout_session token → { surcharge, totalAmount }
+const sessions = new Map()    // checkout_session token → { id, baseAmount, currency, country }
+const sessionFees = new Map() // checkout_session token → { surchargeRate, surcharge, totalAmount }
+let settings = { country: 'US', amount: 10, currency: 'USD', enrollmentMethod: null }
 
 const staticDirectory = path.join(__dirname, 'static')
+const indexPage = path.join(__dirname, 'pages/index.html')
 const checkoutPage = path.join(__dirname, 'pages/checkout.html')
 const checkoutSeamlessPage = path.join(__dirname, 'pages/checkout-seamless.html')
+const enrollmentLitePage = path.join(__dirname, 'pages/enrollment-lite.html')
 
 const app = express()
 
@@ -30,7 +33,7 @@ app.use(express.json())
 app.use('/static', express.static(staticDirectory))
 
 app.get('/', (req, res) => {
-  res.redirect('/checkout')
+  res.sendFile(indexPage)
 })
 
 app.get('/checkout', (req, res) => {
@@ -41,14 +44,29 @@ app.get('/checkout-seamless', (req, res) => {
   res.sendFile(checkoutSeamlessPage)
 })
 
+app.get('/enrollment-lite', (req, res) => {
+  res.sendFile(enrollmentLitePage)
+})
+
 app.get('/public-api-key', (req, res) => {
   res.json({ publicApiKey: PUBLIC_API_KEY })
 })
 
+app.get('/settings', (req, res) => {
+  res.json(settings)
+})
+
+app.post('/settings', (req, res) => {
+  const { country, amount, currency } = req.body
+  if (!country || !amount || !currency) {
+    return res.status(400).json({ error: 'country, amount, and currency are required' })
+  }
+  settings = { country, amount: parseInt(amount), currency }
+  res.json(settings)
+})
+
 app.post('/checkout/sessions', async (req, res) => {
-  const country = req.query.country || 'CO'
-  const { currency } = getCountryData(country)
-  const baseAmount = 2000
+  const { country, amount: baseAmount, currency } = settings
 
   const response = await fetch(
     `${API_URL}/v1/checkout/sessions`,
@@ -73,7 +91,6 @@ app.post('/checkout/sessions', async (req, res) => {
     }
   ).then((resp) => resp.json())
 
-  // Store session metadata for later fee calculation
   if (response.checkout_session) {
     sessions.set(response.checkout_session, {
       id: response.id,
@@ -87,9 +104,7 @@ app.post('/checkout/sessions', async (req, res) => {
 })
 
 app.post('/checkout/seamless/sessions', async (req, res) => {
-  const country = req.query.country || 'CO'
-  const { currency } = getCountryData(country)
-  const baseAmount = 2000
+  const { country, amount: baseAmount, currency } = settings
 
   const response = await fetch(
     `${API_URL}/v1/checkout/sessions`,
@@ -140,7 +155,6 @@ app.post('/session/update-fee', async (req, res) => {
   const surcharge = Math.round(baseAmount * surchargeRate)
   const totalAmount = baseAmount + surcharge
 
-  // Update Yuno session amount to include fee
   await fetch(`${API_URL}/v1/checkout/sessions/${sessionId}`, {
     method: 'PATCH',
     headers: {
@@ -153,7 +167,6 @@ app.post('/session/update-fee', async (req, res) => {
     }),
   })
 
-  // Store computed fee server-side — POST /payments will read from here
   sessionFees.set(checkoutSession, { surchargeRate, surcharge, totalAmount })
 
   res.json({ surchargeRate, surchargeAmount: surcharge, totalAmount, currency })
@@ -161,14 +174,16 @@ app.post('/session/update-fee', async (req, res) => {
 
 app.post('/payments', async (req, res) => {
   const { checkoutSession, oneTimeToken } = req.body
-  const country = req.query.country || 'CO'
-  const { currency, documentNumber, documentType, amount } = getCountryData(country)
 
-  const baseAmount = amount
-  // Read fee from server-side map — never trust client-supplied rate
+  const sessionData = sessions.get(checkoutSession)
+  const country = sessionData?.country ?? settings.country
+  const currency = sessionData?.currency ?? settings.currency
+  const { documentNumber, documentType } = getCountryData(country)
+
+  const baseAmount = sessionData?.baseAmount ?? settings.amount
   const feeData = sessionFees.get(checkoutSession)
-  const surcharge = feeData ? feeData.surcharge : 0
-  const totalAmount = baseAmount + surcharge
+  const surcharge = feeData?.surcharge ?? 0
+  const totalAmount = feeData?.totalAmount ?? baseAmount
 
   const response = await fetch(`${API_URL}/v1/payments`, {
     method: 'POST',
@@ -251,9 +266,100 @@ app.post('/payments', async (req, res) => {
   res.json(response)
 })
 
+app.get('/enrollment/payment-methods', async (req, res) => {
+  const { country } = settings
+
+  // Create a customer session to query enrollable payment methods
+  const sessionRes = await fetch(`${API_URL}/v1/customers/sessions`, {
+    method: 'POST',
+    headers: {
+      'public-api-key': PUBLIC_API_KEY,
+      'private-secret-key': PRIVATE_SECRET_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      account_id: ACCOUNT_CODE,
+      country,
+      customer_id: CUSTOMER_ID,
+    }),
+  }).then(r => r.json())
+
+  if (!sessionRes.customer_session) {
+    return res.status(500).json({ error: 'Failed to create customer session', detail: sessionRes })
+  }
+
+  const methodsRes = await fetch(
+    `${API_URL}/v1/checkout/customers/sessions/${sessionRes.customer_session}/payment-methods`,
+    {
+      method: 'GET',
+      headers: {
+        'public-api-key': PUBLIC_API_KEY,
+        'private-secret-key': PRIVATE_SECRET_KEY,
+      },
+    }
+  ).then(r => r.json())
+
+  res.json(methodsRes.payment_methods ?? [])
+})
+
+app.post('/enrollment/method', (req, res) => {
+  const { method } = req.body
+  if (!method) return res.status(400).json({ error: 'method is required' })
+  settings.enrollmentMethod = method
+  res.json({ enrollmentMethod: settings.enrollmentMethod })
+})
+
+app.post('/customers/sessions', async (req, res) => {
+  const { country } = settings
+
+  const response = await fetch(
+    `${API_URL}/v1/customers/sessions`,
+    {
+      method: 'POST',
+      headers: {
+        'public-api-key': PUBLIC_API_KEY,
+        'private-secret-key': PRIVATE_SECRET_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        account_id: ACCOUNT_CODE,
+        country,
+        customer_id: CUSTOMER_ID,
+      }),
+    }
+  ).then((resp) => resp.json())
+
+  res.json(response)
+})
+
+app.post('/customers/sessions/:customerSession/payment-methods', async (req, res) => {
+  const { customerSession } = req.params
+  const { country } = settings
+
+  const response = await fetch(
+    `${API_URL}/v1/customers/sessions/${customerSession}/payment-methods`,
+    {
+      method: 'POST',
+      headers: {
+        'public-api-key': PUBLIC_API_KEY,
+        'private-secret-key': PRIVATE_SECRET_KEY,
+        'X-idempotency-key': v4(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        payment_method_type: settings.enrollmentMethod ?? 'CARD',
+        country,
+        account_id: ACCOUNT_CODE,
+      }),
+    }
+  ).then((resp) => resp.json())
+
+  res.json(response)
+})
+
 app.listen(SERVER_PORT, async () => {
   console.log(`Server started at port: ${SERVER_PORT}`)
-  console.log(`Demo available at: http://localhost:${SERVER_PORT}/checkout`)
+  console.log(`Demo available at: http://localhost:${SERVER_PORT}`)
 
   API_URL = generateBaseUrlApi()
 

@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://assets-global.website-files.com/6277c350218d32e9e5dc0380/627e9998bb4b6124743a90fc_favicon-yuno32x32.png" rel="shortcut icon" type="image/x-icon"/>
+  <link href="https://assets-global.website-files.com/6277c350218d32e9e5dc0380/627e999c388c6cd2a87050e7_favicon-yuno256x256.png" rel="apple-touch-icon"/>
+  <title>Yuno Demo</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="index-container">
+    <div class="index-card">
+      <h1 class="index-title">Yuno Demo</h1>
+
+      <!-- Settings -->
+      <section class="index-section">
+        <h2 class="index-section-label">Settings</h2>
+        <div class="settings-form">
+          <label class="settings-row">
+            <span>Country</span>
+            <select id="country"><option value="">Loading…</option></select>
+          </label>
+          <label class="settings-row">
+            <span>Amount</span>
+            <input type="number" id="amount" min="1" placeholder="10">
+          </label>
+          <div class="settings-row">
+            <span>Currency</span>
+            <span id="currency" class="currency-display">—</span>
+          </div>
+        </div>
+        <button id="apply-settings" class="btn-apply">Apply Settings</button>
+        <p id="settings-status" class="settings-status"></p>
+      </section>
+
+      <!-- Checkout links -->
+      <section class="index-section">
+        <h2 class="index-section-label">Checkout</h2>
+        <div class="page-links">
+          <a href="/checkout" class="page-link">Full Checkout</a>
+          <a href="/checkout?external=true" class="page-link">Full Checkout + External Buttons</a>
+          <a href="/checkout-seamless" class="page-link">Seamless Checkout</a>
+          <a href="/checkout-seamless?external=true" class="page-link">Seamless + External Buttons</a>
+        </div>
+      </section>
+
+      <!-- Enrollment -->
+      <section class="index-section">
+        <h2 class="index-section-label">Enrollment</h2>
+        <p class="methods-hint">Select a payment method to enroll:</p>
+        <div id="enrollment-methods" class="method-grid">
+          <span class="methods-loading">Loading available methods…</span>
+        </div>
+        <div class="page-links" style="margin-top:12px;">
+          <a href="/enrollment-lite" id="enrollment-link" class="page-link page-link--disabled">Enrollment Lite</a>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const FALLBACK_COUNTRIES = [
+      { code: 'CO', name: 'Colombia', currency: 'COP' },
+      { code: 'BR', name: 'Brazil', currency: 'BRL' },
+      { code: 'CL', name: 'Chile', currency: 'CLP' },
+      { code: 'AR', name: 'Argentina', currency: 'ARS' },
+      { code: 'SG', name: 'Singapore', currency: 'SGD' },
+      { code: 'US', name: 'United States', currency: 'USD' },
+    ]
+    const CACHE_KEY = 'yuno_countries_v1'
+    let countryMap = {}
+
+    async function loadCountries() {
+      const cached = localStorage.getItem(CACHE_KEY)
+      if (cached) return JSON.parse(cached)
+
+      try {
+        const data = await fetch('https://restcountries.com/v3.1/all?fields=name,cca2,currencies')
+          .then(r => r.json())
+
+        const countries = data
+          .filter(c => c.cca2 && c.currencies && Object.keys(c.currencies).length > 0)
+          .map(c => ({
+            code: c.cca2,
+            name: c.name.common,
+            currency: Object.keys(c.currencies)[0],
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name))
+
+        localStorage.setItem(CACHE_KEY, JSON.stringify(countries))
+        return countries
+      } catch {
+        return FALLBACK_COUNTRIES
+      }
+    }
+
+    function populateSelect(countries, currentCode) {
+      const select = document.getElementById('country')
+      select.innerHTML = ''
+      countryMap = {}
+      countries.forEach(c => {
+        countryMap[c.code] = c.currency
+        const opt = document.createElement('option')
+        opt.value = c.code
+        opt.textContent = `${c.name} (${c.currency})`
+        if (c.code === currentCode) opt.selected = true
+        select.appendChild(opt)
+      })
+      updateCurrency()
+    }
+
+    function updateCurrency() {
+      const code = document.getElementById('country').value
+      document.getElementById('currency').textContent = countryMap[code] ?? '—'
+    }
+
+    async function loadEnrollmentMethods() {
+      const container = document.getElementById('enrollment-methods')
+      container.innerHTML = '<span class="methods-loading">Loading available methods…</span>'
+
+      try {
+        const methods = await fetch('/enrollment/payment-methods').then(r => r.json())
+
+        if (!Array.isArray(methods) || methods.length === 0) {
+          container.innerHTML = '<span class="methods-empty">No methods available for current settings.</span>'
+          return
+        }
+
+        container.innerHTML = ''
+        methods.forEach(m => {
+          const btn = document.createElement('button')
+          btn.className = 'method-card'
+          btn.dataset.type = m.type
+          btn.innerHTML = `
+            <div class="method-icon-wrap">
+              ${m.icon ? `<img src="${m.icon}" alt="" class="method-icon">` : ''}
+            </div>
+            <span class="method-name">${m.name || m.type}</span>`
+
+          btn.addEventListener('click', async () => {
+            container.querySelectorAll('.method-card').forEach(c => c.classList.remove('selected'))
+            btn.classList.add('selected')
+            await fetch('/enrollment/method', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ method: m.type }),
+            })
+            document.getElementById('enrollment-link').classList.remove('page-link--disabled')
+          })
+          container.appendChild(btn)
+        })
+      } catch {
+        container.innerHTML = '<span class="methods-empty">Could not load methods.</span>'
+      }
+    }
+
+    async function init() {
+      const [currentSettings, countries] = await Promise.all([
+        fetch('/settings').then(r => r.json()),
+        loadCountries(),
+      ])
+
+      populateSelect(countries, currentSettings.country)
+      document.getElementById('amount').value = currentSettings.amount
+
+      document.getElementById('country').addEventListener('change', updateCurrency)
+
+      document.getElementById('apply-settings').addEventListener('click', async () => {
+        const country = document.getElementById('country').value
+        const amount = parseInt(document.getElementById('amount').value) || 10
+        const currency = countryMap[country] ?? 'USD'
+        const status = document.getElementById('settings-status')
+
+        const result = await fetch('/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ country, amount, currency }),
+        }).then(r => r.json())
+
+        status.textContent = `✓ Saved: ${result.country} · ${result.currency} ${result.amount}`
+        setTimeout(() => { status.textContent = '' }, 3000)
+
+        // Refresh enrollment methods for new country
+        document.getElementById('enrollment-link').classList.add('page-link--disabled')
+        loadEnrollmentMethods()
+      })
+
+      loadEnrollmentMethods()
+    }
+
+    init()
+  </script>
+</body>
+</html>

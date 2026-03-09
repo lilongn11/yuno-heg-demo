@@ -1,43 +1,43 @@
 export async function getPublicApiKey() {
-  return fetch(`/public-api-key${window.location.search}`, {
-    method: 'GET'
-  })
-  .then(resp => resp.json())
-  .then(resp => resp.publicApiKey)
+  return fetch('/public-api-key', { method: 'GET' })
+    .then(resp => resp.json())
+    .then(resp => resp.publicApiKey)
 }
 
 export async function getCheckoutSession() {
-  return fetch(`/checkout/sessions${window.location.search}`, {
-    method: 'POST'
-  })
-  .then(resp => resp.json())
+  return fetch('/checkout/sessions', { method: 'POST' })
+    .then(resp => resp.json())
 }
 
 export async function createPayment(data) {
-  return fetch(`/payments${window.location.search}`, {
+  return fetch('/payments', {
     method: 'POST',
     body: JSON.stringify(data),
-    headers: {
-      'Content-Type': 'application/json'
-    },
-  })
-  .then(resp => resp.json())
+    headers: { 'Content-Type': 'application/json' },
+  }).then(resp => resp.json())
 }
 
 export async function getSeamlessCheckoutSession() {
-  return fetch(`/checkout/seamless/sessions${window.location.search}`, {
-    method: 'POST'
-  })
-  .then(resp => resp.json())
+  return fetch('/checkout/seamless/sessions', { method: 'POST' })
+    .then(resp => resp.json())
 }
 
 export async function updateSessionFee({ checkoutSession, tokenWithInfo }) {
   return fetch('/session/update-fee', {
     method: 'POST',
     body: JSON.stringify({ checkoutSession, tokenWithInfo }),
-    headers: {
-      'Content-Type': 'application/json'
-    },
-  })
-  .then(resp => resp.json())
+    headers: { 'Content-Type': 'application/json' },
+  }).then(resp => resp.json())
+}
+
+export async function getCustomerSession() {
+  return fetch('/customers/sessions', { method: 'POST' })
+    .then(resp => resp.json())
+}
+
+export async function createEnrollment(customerSession) {
+  return fetch(`/customers/sessions/${customerSession}/payment-methods`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  }).then(resp => resp.json())
 }

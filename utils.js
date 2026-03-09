@@ -29,6 +29,13 @@ exports.getCountryData = function getCountryData(country) {
       currency: "CLP",
       amount: Math.floor(Math.random() * (1000 + 1) + 10),
     };
+  } else if (country == "SG") {
+    countryData = {
+      documentType: "PASS",
+      documentNumber: "T12345",
+      currency: "SGD",
+      amount: 100,
+    };
   } else {
     countryData = {
       documentType: "PASS",
