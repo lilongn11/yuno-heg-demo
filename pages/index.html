@@ -31,6 +31,19 @@
     </div>
   </div>
 
+  <!-- External-button overlay (used by Checkout Lite for PayPal / Google Pay / Apple Pay) -->
+  <div id="ext-btn-overlay" style="display:none;">
+    <div id="ext-btn-inner">
+      <div id="ext-btn-header">
+        <span id="ext-btn-title">Pay</span>
+        <button id="ext-btn-close" aria-label="Close">&#10005;</button>
+      </div>
+      <div id="ext-btn-container">
+        <span id="ext-btn-loading" class="methods-loading">Loading…</span>
+      </div>
+    </div>
+  </div>
+
   <!-- Surcharge confirmation modal (used by Checkout Lite) -->
   <div id="surcharge-confirm" style="display:none;">
     <div id="surcharge-confirm__inner">
@@ -146,6 +159,7 @@
       { code: 'US', name: 'United States', currency: 'USD' },
     ]
     const CACHE_KEY = 'yuno_countries_v1'
+    const EXTERNAL_BUTTON_METHODS = new Set(['PAYPAL', 'PAYPAL_ENROLLMENT', 'GOOGLE_PAY', 'APPLE_PAY'])
     let countryMap = {}
     let checkoutLiteMethod = null
 
@@ -194,6 +208,8 @@
     }
 
     async function loadCheckoutLiteMethods() {
+      checkoutLiteMethod = null
+      document.getElementById('checkout-lite-link').classList.add('page-link--disabled')
       const container = document.getElementById('checkout-lite-methods')
       container.innerHTML = '<span class="methods-loading">Loading available methods…</span>'
 
@@ -229,6 +245,13 @@
       }
     }
 
+    function formatMethodName(type) {
+      return type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+        .replace('Paypal', 'PayPal')
+        .replace('Google Pay', 'Google Pay')
+        .replace('Apple Pay', 'Apple Pay')
+    }
+
     async function startCheckoutLite(e) {
       e.preventDefault()
       if (!checkoutLiteMethod) return
@@ -241,6 +264,63 @@
       const publicApiKey = await getPublicApiKey()
       const yuno = await Yuno.initialize(publicApiKey)
 
+      // ── External-button path (PayPal, Google Pay, Apple Pay) ──────────────
+      if (EXTERNAL_BUTTON_METHODS.has(checkoutLiteMethod)) {
+        const extOverlay = document.getElementById('ext-btn-overlay')
+        document.getElementById('ext-btn-title').textContent =
+          `Pay with ${formatMethodName(checkoutLiteMethod)}`
+        document.getElementById('ext-btn-container').innerHTML =
+          '<span id="ext-btn-loading" class="methods-loading">Loading…</span>'
+        extOverlay.style.display = 'flex'
+
+        await yuno.startCheckout({
+          checkoutSession,
+          elementSelector: '#root',
+          countryCode,
+          language: 'en',
+          showLoading: false,
+          renderMode: {
+            type: 'modal',
+            elementSelector: {
+              apmForm: '#form-element',
+              actionForm: '#action-form-element',
+            },
+          },
+
+          async yunoCreatePayment(oneTimeToken) {
+            await createPayment({ oneTimeToken, checkoutSession })
+            yuno.continuePayment()
+          },
+
+          yunoPaymentResult(data) {
+            console.log('yunoPaymentResult', data)
+            yuno.hideLoader()
+            extOverlay.style.display = 'none'
+          },
+
+          yunoError: (error) => {
+            console.log('yunoError', error)
+            yuno.hideLoader()
+            if (error === 'CANCELED_BY_USER') extOverlay.style.display = 'none'
+          },
+        })
+
+        document.getElementById('ext-btn-loading').style.display = 'none'
+        await yuno.mountExternalButtons([{
+          paymentMethodType: checkoutLiteMethod,
+          elementSelector: '#ext-btn-container',
+        }])
+
+        document.getElementById('ext-btn-close').addEventListener('click', () => {
+          extOverlay.style.display = 'none'
+        })
+        extOverlay.addEventListener('click', (ev) => {
+          if (ev.target === extOverlay) extOverlay.style.display = 'none'
+        })
+        return
+      }
+
+      // ── Standard Checkout Lite path ────────────────────────────────────────
       const surchargeConfirm = document.getElementById('surcharge-confirm')
       let currentCheckoutSession = checkoutSession
 
