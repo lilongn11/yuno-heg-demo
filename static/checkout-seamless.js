@@ -5,7 +5,10 @@ async function initExternalCheckout(onFallback) {
   const publicApiKey = await getPublicApiKey()
   const yuno = await Yuno.initialize(publicApiKey)
 
-  await yuno.startSeamlessCheckout({
+  // Apple Pay requires HTTPS — skip on plain HTTP to avoid crashing the whole flow
+  const isSecure = window.location.protocol === 'https:'
+
+  const startPromise = yuno.startSeamlessCheckout({
     checkoutSession,
     elementSelector: '#root',
     countryCode,
@@ -15,32 +18,47 @@ async function initExternalCheckout(onFallback) {
       elementSelector: '#form-element',
     },
     yunoPaymentResult(data) { console.log('yunoPaymentResult', data) },
-    yunoError: (error) => {
-      console.log('No external payment methods available, continuing with regular checkout', error)
-      document.getElementById('external-buttons').style.display = 'none'
-      onFallback()
-    },
+    yunoError: (error) => { console.log('[external] yunoError:', error) },
   })
 
-  // External buttons only — no card form in this mode
+  await Promise.race([startPromise, new Promise(r => setTimeout(r, 3000))]).catch(() => {})
+
+  // External buttons only — hide root card and pay button
+  document.getElementById('root').style.display = 'none'
   document.getElementById('button-pay').style.display = 'none'
   document.getElementById('external-buttons').style.display = 'block'
   document.querySelectorAll('.external-btn-row').forEach(row => row.style.display = 'none')
-  ;['paypal-btn', 'google-pay-btn', 'apple-pay-btn'].forEach(id => {
+
+  let rendered = 0
+  const ids = isSecure
+    ? ['paypal-btn', 'google-pay-btn', 'apple-pay-btn']
+    : ['paypal-btn', 'google-pay-btn']
+  ids.forEach(id => {
     const container = document.getElementById(id)
     const observer = new MutationObserver(() => {
       if (container.children.length > 0) {
+        rendered++
         container.closest('.external-btn-row').style.display = 'flex'
         observer.disconnect()
       }
     })
     observer.observe(container, { childList: true, subtree: true })
   })
-  yuno.mountSeamlessExternalButtons([
-    { paymentMethodType: 'PAYPAL_ENROLLMENT', elementSelector: '#paypal-btn' },
+
+  const buttons = [
+    { paymentMethodType: 'PAYPAL', elementSelector: '#paypal-btn' },
     { paymentMethodType: 'GOOGLE_PAY', elementSelector: '#google-pay-btn' },
-    { paymentMethodType: 'APPLE_PAY',  elementSelector: '#apple-pay-btn' },
-  ])
+  ]
+  if (isSecure) buttons.push({ paymentMethodType: 'APPLE_PAY', elementSelector: '#apple-pay-btn' })
+  yuno.mountSeamlessExternalButtons(buttons)
+
+  setTimeout(() => {
+    if (rendered === 0) {
+      console.log('[external] No buttons rendered — falling back to regular checkout')
+      document.getElementById('external-buttons').style.display = 'none'
+      onFallback()
+    }
+  }, 8000)
 }
 
 async function initSeamlessCheckout(forceRegular = false) {

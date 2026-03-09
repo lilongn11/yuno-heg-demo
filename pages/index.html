@@ -11,6 +11,10 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
+  <!-- Hidden SDK containers — no layout impact -->
+  <div id="form-element" style="display:none;"></div>
+  <div id="action-form-element" style="display:none;"></div>
+
   <div class="index-container">
     <div class="index-card">
       <h1 class="index-title">Yuno Demo</h1>
@@ -55,13 +59,15 @@
           <span class="methods-loading">Loading available methods…</span>
         </div>
         <div class="page-links" style="margin-top:12px;">
-          <a href="/enrollment-lite" id="enrollment-link" class="page-link page-link--disabled">Enrollment Lite</a>
+          <a href="#" id="enrollment-link" class="page-link page-link--disabled">Enrollment Lite</a>
         </div>
       </section>
     </div>
   </div>
 
-  <script>
+  <script type="module">
+    import { getPublicApiKey, getCustomerSession, createEnrollment } from '/static/api.js'
+
     const FALLBACK_COUNTRIES = [
       { code: 'CO', name: 'Colombia', currency: 'COP' },
       { code: 'BR', name: 'Brazil', currency: 'BRL' },
@@ -157,6 +163,37 @@
       }
     }
 
+    async function startEnrollment(e) {
+      e.preventDefault()
+      const { enrollmentMethod } = await fetch('/settings').then(r => r.json())
+      if (!enrollmentMethod) return
+
+      const { customer_session: customerSession, country: countryCode } = await getCustomerSession()
+      await createEnrollment(customerSession)
+      const publicApiKey = await getPublicApiKey()
+      const yuno = await Yuno.initialize(publicApiKey)
+
+      yuno.mountEnrollmentLite({
+        customerSession,
+        countryCode,
+        language: 'en',
+        showLoading: true,
+        renderMode: {
+          type: 'modal',
+          elementSelector: {
+            apmForm: '#form-element',
+            actionForm: '#action-form-element',
+          },
+        },
+        yunoEnrollmentStatus: ({ status, vaultedToken }) => {
+          console.log('enrollment status', { status, vaultedToken })
+        },
+        yunoError: (error) => {
+          console.log('enrollment error', error)
+        },
+      })
+    }
+
     async function init() {
       const [currentSettings, countries] = await Promise.all([
         fetch('/settings').then(r => r.json()),
@@ -183,15 +220,19 @@
         status.textContent = `✓ Saved: ${result.country} · ${result.currency} ${result.amount}`
         setTimeout(() => { status.textContent = '' }, 3000)
 
-        // Refresh enrollment methods for new country
         document.getElementById('enrollment-link').classList.add('page-link--disabled')
         loadEnrollmentMethods()
       })
 
+      document.getElementById('enrollment-link').addEventListener('click', startEnrollment)
+
       loadEnrollmentMethods()
     }
 
-    init()
+    window.addEventListener('yuno-sdk-ready', () => init())
   </script>
+
+  <!-- Yuno SDK -->
+  <script src="https://sdk-web.y.uno/v1.5/main.js" defer></script>
 </body>
 </html>
