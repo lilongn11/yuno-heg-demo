@@ -16,6 +16,21 @@
   <div id="form-element" style="display:none;"></div>
   <div id="action-form-element" style="display:none;"></div>
 
+  <!-- Checkout Full inline overlay -->
+  <div id="checkout-full-overlay" style="display:none;">
+    <div id="checkout-full-inner">
+      <div id="checkout-full-header">
+        <button id="checkout-full-close" aria-label="Close">&#10005;</button>
+      </div>
+      <div id="checkout-full-root"></div>
+      <div id="checkout-surcharge-notice" style="display:none;">
+        <span>&#9432;</span>
+        A processing fee applies to card payments: 1% for Singapore-issued cards, 2% for all other cards.
+      </div>
+      <button id="checkout-full-pay-btn" style="display:none;">Pay Now</button>
+    </div>
+  </div>
+
   <!-- Surcharge confirmation modal (used by Checkout Lite) -->
   <div id="surcharge-confirm" style="display:none;">
     <div id="surcharge-confirm__inner">
@@ -68,7 +83,7 @@
         <summary class="folder-summary">Checkout Full</summary>
         <div class="folder-content">
           <div class="page-links">
-            <a href="/checkout" class="page-link">Checkout Full</a>
+            <a href="#" id="checkout-full-link" class="page-link">Checkout Full</a>
             <a href="/checkout?external=true" class="page-link">Checkout Full + External Buttons</a>
             <a href="/checkout-seamless" class="page-link">Seamless Checkout</a>
             <a href="/checkout-seamless?external=true" class="page-link">Seamless + External Buttons</a>
@@ -338,6 +353,165 @@
       yuno.mountCheckoutLite({ paymentMethodType: checkoutLiteMethod })
     }
 
+    async function startCheckoutFull(e) {
+      e.preventDefault()
+      const overlay = document.getElementById('checkout-full-overlay')
+      overlay.style.display = 'flex'
+
+      const sessionData = await getCheckoutSession()
+      const { checkout_session: checkoutSession, country: countryCode } = sessionData
+      const baseAmount = sessionData.amount?.value ?? 10
+      const currency = sessionData.amount?.currency ?? 'USD'
+
+      const publicApiKey = await getPublicApiKey()
+      const yuno = await Yuno.initialize(publicApiKey)
+
+      const surchargeNotice = document.getElementById('checkout-surcharge-notice')
+      const payBtn = document.getElementById('checkout-full-pay-btn')
+      let pendingCardOpen = false
+      let currentCheckoutSession = checkoutSession
+
+      function formatAmount(amt) {
+        return new Intl.NumberFormat('en', {
+          style: 'currency', currency,
+          minimumFractionDigits: 0, maximumFractionDigits: 0,
+        }).format(amt)
+      }
+
+      function showSurchargeConfirm(data) {
+        const { cardCountryCode, cardCountryName, surchargeRate, surchargeAmount, totalAmount, rateMayVary } = data
+        const surchargeConfirm = document.getElementById('surcharge-confirm')
+
+        document.getElementById('sc-country').textContent = cardCountryName || cardCountryCode || 'Unknown'
+        document.getElementById('sc-rate').textContent = `${(surchargeRate * 100).toFixed(0)}%`
+        document.getElementById('sc-base').textContent = formatAmount(baseAmount)
+        document.getElementById('sc-fee').textContent = formatAmount(surchargeAmount)
+        document.getElementById('sc-total').textContent = formatAmount(totalAmount)
+
+        const disclaimer = document.getElementById('sc-disclaimer')
+        disclaimer.style.display = rateMayVary ? 'block' : 'none'
+
+        surchargeConfirm.style.display = 'flex'
+
+        return new Promise((resolve) => {
+          const backCardBtn = document.getElementById('sc-back-card')
+          const okBtn = document.getElementById('sc-ok')
+          const changeMethodBtn = document.getElementById('sc-change-method')
+
+          function onBackCard() { cleanup(); resolve('different-card') }
+          function onConfirm() { cleanup(); resolve('confirm') }
+          function onChangeMethod() { cleanup(); resolve('change-method') }
+
+          function cleanup() {
+            surchargeConfirm.style.display = 'none'
+            backCardBtn.removeEventListener('click', onBackCard)
+            okBtn.removeEventListener('click', onConfirm)
+            changeMethodBtn.removeEventListener('click', onChangeMethod)
+          }
+
+          backCardBtn.addEventListener('click', onBackCard)
+          okBtn.addEventListener('click', onConfirm)
+          changeMethodBtn.addEventListener('click', onChangeMethod)
+        })
+      }
+
+      await yuno.startCheckout({
+        checkoutSession,
+        elementSelector: '#checkout-full-root',
+        countryCode,
+        language: 'en',
+        showLoading: true,
+        renderMode: {
+          type: 'modal',
+          elementSelector: {
+            apmForm: '#form-element',
+            actionForm: '#action-form-element',
+          },
+        },
+        card: { type: 'extends', styles: '' },
+
+        yunoPaymentMethodSelected(data) {
+          surchargeNotice.style.display = data.type === 'CARD' ? 'block' : 'none'
+          payBtn.style.display = 'flex'
+          if (data.type === 'CARD' && pendingCardOpen) {
+            pendingCardOpen = false
+            setTimeout(() => yuno.startPayment(), 500)
+          }
+        },
+
+        async yunoCreatePayment(oneTimeToken, tokenWithInfo) {
+          console.log('tokenWithInformation', tokenWithInfo)
+
+          const isCard = tokenWithInfo?.payment_method_type === 'CARD' ||
+                         tokenWithInfo?.card_data != null
+
+          if (!isCard) {
+            await createPayment({ oneTimeToken, checkoutSession: currentCheckoutSession })
+            yuno.continuePayment()
+            return
+          }
+
+          yuno.hideLoader()
+
+          const feeData = await updateSessionFee({ checkoutSession: currentCheckoutSession, tokenWithInfo })
+
+          const result = await showSurchargeConfirm({
+            cardCountryCode: tokenWithInfo?.card_data?.country_code ?? null,
+            cardCountryName: tokenWithInfo?.card_data?.country_name ?? null,
+            surchargeRate: feeData.surchargeRate,
+            surchargeAmount: feeData.surchargeAmount,
+            totalAmount: feeData.totalAmount,
+            rateMayVary: !tokenWithInfo?.card_data?.country_code,
+          })
+
+          if (result === 'different-card') {
+            pendingCardOpen = true
+            const nd = await getCheckoutSession()
+            currentCheckoutSession = nd.checkout_session
+            yuno.updateCheckoutSession(nd.checkout_session)
+            yuno.mountCheckout({ paymentMethodType: 'CARD' })
+            return
+          }
+
+          if (result === 'change-method') {
+            surchargeNotice.style.display = 'none'
+            payBtn.style.display = 'none'
+            const nd = await getCheckoutSession()
+            currentCheckoutSession = nd.checkout_session
+            yuno.updateCheckoutSession(nd.checkout_session)
+            yuno.mountCheckout()
+            return
+          }
+
+          await createPayment({ oneTimeToken, checkoutSession: currentCheckoutSession })
+          yuno.continuePayment()
+        },
+
+        yunoPaymentResult(data) {
+          console.log('yunoPaymentResult', data)
+          yuno.hideLoader()
+          overlay.style.display = 'none'
+        },
+
+        yunoError: (error) => {
+          console.log('yunoError', error)
+          yuno.hideLoader()
+          if (error === 'CANCELED_BY_USER') overlay.style.display = 'none'
+        },
+      })
+
+      yuno.mountCheckout()
+
+      payBtn.addEventListener('click', () => yuno.startPayment())
+
+      document.getElementById('checkout-full-close').addEventListener('click', () => {
+        overlay.style.display = 'none'
+      })
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.style.display = 'none'
+      })
+    }
+
     async function loadEnrollmentMethods() {
       const container = document.getElementById('enrollment-methods')
       container.innerHTML = '<span class="methods-loading">Loading available methods…</span>'
@@ -450,6 +624,7 @@
         if (e.target.open) loadEnrollmentMethods()
       })
 
+      document.getElementById('checkout-full-link').addEventListener('click', startCheckoutFull)
       document.getElementById('checkout-lite-link').addEventListener('click', startCheckoutLite)
       document.getElementById('enrollment-link').addEventListener('click', startEnrollment)
     }

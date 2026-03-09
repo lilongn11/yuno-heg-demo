@@ -14,7 +14,11 @@ Settings are stored server-side (`POST /settings`) and applied to all subsequent
 
 The index page has three collapsible folders — only one can be open at a time:
 
-- **Checkout Full** — links to the full checkout and seamless checkout pages
+- **Checkout Full** — contains four links:
+  - **Checkout Full** — opens the full payment method selector as an overlay directly on the index page (no navigation)
+  - **Checkout Full + External Buttons** — navigates to `/checkout?external=true`
+  - **Seamless Checkout** — navigates to `/checkout-seamless`
+  - **Seamless + External Buttons** — navigates to `/checkout-seamless?external=true`
 - **Checkout Lite** — shows available payment methods when unfolded; select a method then click **Continue With Selected** to open the checkout lite modal directly on the index page
 - **Enrollment** — shows enrollable payment methods when unfolded; select a method then click **Enrollment Lite** to open the enrollment modal directly on the index page
 
@@ -24,22 +28,27 @@ Payment methods are only fetched when a folder is opened or when **Apply Setting
 
 ## Integrations
 
-### 1. Full Checkout — `/checkout`
+### 1. Full Checkout — inline overlay (index page) and `/checkout`
 
-Uses the Yuno **Full Checkout SDK** (`startCheckout` + `mountCheckout`). The SDK renders a payment method selector; the user picks CARD, fills details, and the merchant intercepts payment creation.
+Uses the Yuno **Full Checkout SDK** (`startCheckout` + `mountCheckout`). The SDK renders a payment method selector; the user picks a method and clicks **Pay Now** to proceed. For card payments, a surcharge confirmation modal is shown before the payment is created.
 
-**Flow:**
+**Inline variant (index page overlay):**
+
+Clicking **Checkout Full** in the folder opens an overlay on the index page — no navigation required. The SDK mounts inside a dedicated `#checkout-full-root` container (separate from `#root` used by Checkout Lite to avoid conflicts). An × button and clicking the dark backdrop both close the overlay.
+
+**Flow (both inline and `/checkout` page):**
 1. SDK renders the full payment method list
-2. User selects CARD → surcharge notice appears (1% SG / 2% other)
-3. User fills card details and clicks **Pay Now**
+2. User selects any method → **Pay Now** button appears
+3. For **CARD**: surcharge notice appears; user clicks **Pay Now** → card form opens
 4. SDK tokenises the card → `yunoCreatePayment` fires
 5. Frontend sends `tokenWithInfo` to server → server calculates surcharge rate
 6. Confirmation modal shows: card origin, rate, base amount, fee, total
 7. **Confirm & Pay** → payment created with server-computed fee → `continuePayment()`
 8. **Use different card** → new session, card form reopens automatically
 9. **Change payment method** → returns to method selector
+10. For **non-card methods**: payment goes straight through without surcharge modal
 
-**Key files:** `pages/checkout.html`, `static/checkout.js`
+**Key files:** `pages/index.html` (inline script), `pages/checkout.html`, `static/checkout.js`
 
 ---
 
