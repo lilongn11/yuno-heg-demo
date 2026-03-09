@@ -1,6 +1,20 @@
-# Yuno Checkout Demo — HEG
+# Yuno Demo
 
-A demo of two Yuno SDK integration patterns, both implementing a card-country surcharge flow with a confirmation modal. Both pages also support an optional external payment buttons mode.
+A demo of three Yuno SDK integration patterns: two checkout flows with a card-country surcharge confirmation modal, and an enrollment lite flow. All pages support configurable country, amount, and currency via the index page.
+
+## Index Page — `/`
+
+Configure demo settings before navigating to any integration:
+
+- **Country** — populated from the restcountries.com public API (cached in `localStorage`), with a local fallback list
+- **Amount** — numeric input
+- **Currency** — auto-derived from selected country
+
+Settings are stored server-side (`POST /settings`) and applied to all subsequent session creation calls. No query parameters are used.
+
+The enrollment section additionally shows available payment methods fetched from Yuno's customer session API. A method must be selected before the Enrollment Lite link becomes active.
+
+---
 
 ## Integrations
 
@@ -44,7 +58,7 @@ Uses the Yuno **Full Checkout SDK** with `mountCheckout({ paymentMethodType: 'CA
 
 ### External Payment Buttons Mode — `?external=true`
 
-Both pages support an `?external=true` URL parameter that switches to external payment buttons (PayPal Enrollment, Google Pay, Apple Pay) rendered as standalone SDK buttons via `mountSeamlessExternalButtons`.
+Both checkout pages support an `?external=true` URL parameter that switches to external payment buttons (PayPal Enrollment, Google Pay, Apple Pay) rendered as standalone SDK buttons via `mountSeamlessExternalButtons`.
 
 **URLs:**
 - `/checkout?external=true`
@@ -54,6 +68,24 @@ Both pages support an `?external=true` URL parameter that switches to external p
 - Each button is only shown if the payment method is available in the account (detected via `MutationObserver`)
 - If no external methods are available, the page automatically falls back to the regular card checkout
 - The Pay Now button is hidden in external mode — each button handles its own payment flow
+
+---
+
+### 3. Enrollment Lite — `/enrollment-lite`
+
+Uses the Yuno **Enrollment Lite SDK** (`mountEnrollmentLite`) to enroll a payment method into the customer vault without making a payment. The payment method to enroll is selected on the index page before navigating here.
+
+**Flow:**
+1. User selects an enrollable payment method on the index page → stored server-side
+2. User navigates to `/enrollment-lite`
+3. Server creates a customer session (`POST /v1/customers/sessions`)
+4. Server registers the enrollment (`POST /v1/customers/sessions/{id}/payment-methods`)
+5. SDK mounts the enrollment form for the selected method:
+   - **CARD** → `mountEnrollmentLite` opens modal immediately on page load
+   - **PAYPAL_ENROLLMENT** → `mountEnrollmentLite` renders the PayPal button inline (`renderMode: { type: 'element' }`)
+6. `yunoEnrollmentStatus` callback fires with `status` and `vaultedToken` on completion
+
+**Key files:** `pages/enrollment-lite.html`, `static/enrollment-lite.js`
 
 ---
 
@@ -83,14 +115,16 @@ Vanilla JS + Node.js / Express
    ```bash
    npm install && npm start
    ```
-4. Open [http://localhost:8080](http://localhost:8080)
+4. Open [http://localhost:8080](http://localhost:8080) — the index page
 
 | URL | Description |
 |---|---|
-| `/checkout` | Full Checkout (card + all methods) |
+| `/` | Index — configure settings and navigate |
+| `/checkout` | Full Checkout |
 | `/checkout-seamless` | Seamless card-only checkout |
 | `/checkout?external=true` | Full Checkout → external buttons mode |
 | `/checkout-seamless?external=true` | Seamless → external buttons mode |
+| `/enrollment-lite` | Enrollment Lite (method selected on index page) |
 
 ## Environment variables
 
@@ -104,9 +138,17 @@ Vanilla JS + Node.js / Express
 
 | Endpoint | Description |
 |---|---|
+| `GET /` | Index page |
 | `GET /checkout` | Full Checkout page |
 | `GET /checkout-seamless` | Seamless Checkout page |
+| `GET /enrollment-lite` | Enrollment Lite page |
+| `GET /settings` | Returns current demo settings |
+| `POST /settings` | Updates country, amount, currency |
 | `POST /checkout/sessions` | Creates a Yuno checkout session |
-| `POST /checkout/seamless/sessions` | Creates a Yuno seamless checkout session (used by external mode) |
+| `POST /checkout/seamless/sessions` | Creates a Yuno checkout session (used by external buttons mode) |
 | `POST /session/update-fee` | Calculates surcharge from `tokenWithInfo`, updates Yuno session, stores fee |
 | `POST /payments` | Creates the payment using server-stored fee |
+| `GET /enrollment/payment-methods` | Returns enrollable payment methods via customer session API |
+| `POST /enrollment/method` | Stores the selected enrollment method |
+| `POST /customers/sessions` | Creates a Yuno customer session |
+| `POST /customers/sessions/:id/payment-methods` | Registers a payment method for enrollment |
