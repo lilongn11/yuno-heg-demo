@@ -152,7 +152,7 @@ app.post('/session/update-fee', async (req, res) => {
   const { id: sessionId, baseAmount, currency } = sessionData
   const cardCountryCode = tokenWithInfo?.card_data?.country_code ?? null
   const surchargeRate = cardCountryCode === 'SG' ? 0.01 : 0.02
-  const surcharge = Math.round(baseAmount * surchargeRate)
+  const surcharge = Math.round(baseAmount * surchargeRate * 100) / 100
   const totalAmount = baseAmount + surcharge
 
   await fetch(`${API_URL}/v1/checkout/sessions/${sessionId}`, {

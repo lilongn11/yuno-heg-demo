@@ -88,8 +88,8 @@ async function initCheckout(forceRegular = false) {
     return new Intl.NumberFormat('en', {
       style: 'currency',
       currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(amount)
   }
 
