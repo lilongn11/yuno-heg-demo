@@ -13,7 +13,7 @@ const ACCOUNT_CODE = process.env.ACCOUNT_CODE
 const PUBLIC_API_KEY = process.env.PUBLIC_API_KEY
 const PRIVATE_SECRET_KEY = process.env.PRIVATE_SECRET_KEY
 
-const SERVER_PORT = 8080
+const SERVER_PORT = process.env.PORT || 8080
 
 let CUSTOMER_ID
 
@@ -31,6 +31,10 @@ const app = express()
 
 app.use(express.json())
 app.use('/static', express.static(staticDirectory))
+
+app.get('/.well-known/apple-developer-merchantid-domain-association', (req, res) => {
+  res.sendFile(path.join(__dirname, 'apple-developer-merchantid-domain-association'))
+})
 
 app.get('/', (req, res) => {
   res.sendFile(indexPage)
@@ -125,6 +129,7 @@ app.post('/checkout/seamless/sessions', async (req, res) => {
           currency,
           value: baseAmount,
         },
+        workflow: 'SDK_SEAMLESS',
       }),
     }
   ).then((resp) => resp.json())
@@ -405,7 +410,7 @@ app.listen(SERVER_PORT, async () => {
   CUSTOMER_ID = await createCustomer().then(({ id }) => id)
   console.log(`Customer created: ${CUSTOMER_ID}`)
 
-  await open(`http://localhost:${SERVER_PORT}`)
+  if (!process.env.PORT) await open(`http://localhost:${SERVER_PORT}`)
 })
 
 const ApiKeyPrefixToEnvironmentSuffix = {
