@@ -226,30 +226,6 @@ async function initCheckout(forceRegular = false) {
 
   yuno.mountCheckout()
 
-  // Mount external payment buttons (Apple Pay, PayPal) that aren't natively rendered by Full Checkout
-  document.getElementById('external-buttons').style.display = 'block'
-  document.querySelectorAll('.external-btn-row').forEach(row => row.style.display = 'none')
-
-  const isSecure = window.location.protocol === 'https:'
-  const externalButtons = [
-    { paymentMethodType: 'PAYPAL', elementSelector: '#paypal-btn' },
-  ]
-  if (isSecure) externalButtons.push({ paymentMethodType: 'APPLE_PAY', elementSelector: '#apple-pay-btn' })
-
-  const externalIds = isSecure ? ['paypal-btn', 'apple-pay-btn'] : ['paypal-btn']
-  externalIds.forEach(id => {
-    const container = document.getElementById(id)
-    const observer = new MutationObserver(() => {
-      if (container.children.length > 0) {
-        container.closest('.external-btn-row').style.display = 'flex'
-        observer.disconnect()
-      }
-    })
-    observer.observe(container, { childList: true, subtree: true })
-  })
-
-  yuno.mountExternalButtons(externalButtons)
-
   const payButton = document.getElementById('button-pay')
   payButton.addEventListener('click', () => {
     yuno.startPayment()
