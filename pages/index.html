@@ -80,7 +80,7 @@
           </label>
           <label class="settings-row">
             <span>Amount</span>
-            <input type="number" id="amount" min="1" placeholder="10">
+            <input type="number" id="amount" min="0" step="0.01" placeholder="10">
           </label>
           <div class="settings-row">
             <span>Currency</span>
@@ -676,7 +676,8 @@
 
       document.getElementById('apply-settings').addEventListener('click', async () => {
         const country = document.getElementById('country').value
-        const amount = parseInt(document.getElementById('amount').value) || 10
+        const parsedAmount = parseFloat(document.getElementById('amount').value)
+        const amount = Number.isNaN(parsedAmount) ? 10 : parsedAmount
         const currency = countryMap[country] ?? 'USD'
         const status = document.getElementById('settings-status')
 
