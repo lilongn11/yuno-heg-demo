@@ -62,10 +62,11 @@ app.get('/settings', (req, res) => {
 
 app.post('/settings', (req, res) => {
   const { country, amount, currency } = req.body
-  if (!country || !amount || !currency) {
-    return res.status(400).json({ error: 'country, amount, and currency are required' })
+  const parsedAmount = parseFloat(amount)
+  if (!country || amount == null || Number.isNaN(parsedAmount) || parsedAmount < 0 || !currency) {
+    return res.status(400).json({ error: 'country, a non-negative amount, and currency are required' })
   }
-  settings = { country, amount: parseInt(amount), currency }
+  settings = { country, amount: parsedAmount, currency }
   res.json(settings)
 })
 
